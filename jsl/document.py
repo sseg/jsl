@@ -2,7 +2,7 @@
 import inspect
 
 from . import registry
-from .exceptions import processing, DocumentStep
+from .exceptions import processing, DocumentStep, TemplateGenerationException
 from .fields import BaseField, DocumentField, DictField
 from .roles import DEFAULT_ROLE, Var, Scope, all_, construct_matcher, Resolvable, Resolution
 from .resolutionscope import ResolutionScope, EMPTY_SCOPE
@@ -342,6 +342,52 @@ class Document(with_metaclass(DocumentMeta)):
             rv['definitions'] = definitions
         rv.update(schema)
         return rv
+
+    @classmethod
+    def template(cls, role=DEFAULT_ROLE, **kw):
+        """Returns a serializable dictionary based on the top level of the
+        class schema, substituting keyword arguments for properties.
+
+        WARNING: Templating does not validate argument types.
+
+        :param str role: A role.
+        :raises: :class:`NotImplementedError`
+        :raises: :class:`.TemplateGenerationException`
+        :rtype: dict
+        """
+        _, schema = cls.get_definitions_and_schema(
+            role=role,
+            res_scope=ResolutionScope(base=cls._options.id, current=cls._options.id)
+        )
+        if schema['type'] != 'object':
+            raise NotImplementedError('Only schemas of type `object` are supported')
+
+        required = schema['required']
+        additional_properties = schema['additionalProperties']
+        properties = schema['properties']
+        result = {}
+
+        for prop in properties:
+            if prop in required:
+                try:
+                    result[prop] = kw.pop(prop)
+                except KeyError:
+                    raise TemplateGenerationException('Required property "{0!r}" not defined'.format(prop))
+            else:
+                try:
+                    result[prop] = kw.pop(prop)
+                except KeyError:
+                    pass
+        remaining_props = [k for k in kw]
+        if not additional_properties and remaining_props:
+            raise TemplateGenerationException(
+                'Additional properties are not allowed for this schema.'
+                'Extra properties found: {!r}'.format(remaining_props)
+            )
+        for prop in remaining_props:
+            result[prop] = kw.pop(prop)
+
+        return result
 
     @classmethod
     def get_definitions_and_schema(cls, role=DEFAULT_ROLE, res_scope=EMPTY_SCOPE,

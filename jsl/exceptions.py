@@ -149,3 +149,7 @@ class SchemaGenerationException(Exception):
         if steps:
             rv += u'\nSteps: {0}'.format(steps)
         return rv
+
+
+class TemplateGenerationException(Exception):
+    pass
